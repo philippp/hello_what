@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hello World - Strace Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Georgia', 'Times New Roman', serif;
+            background-color: #f7f3e9;
+            color: #2c1810;
+            line-height: 1.4;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            gap: 2px;
+        }
+
+        .program-source {
+            background-color: #d2a679;
+            padding: 20px;
+            border-bottom: 3px solid #8b4513;
+        }
+
+        .program-source h2 {
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            color: #2c1810;
+        }
+
+        .program-source code {
+            font-family: 'Courier New', 'Monaco', monospace;
+            background-color: #f5f1e8;
+            padding: 15px;
+            border-radius: 5px;
+            display: block;
+            white-space: pre;
+            color: #1a1a1a;
+            border: 1px solid #a0522d;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2px;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .strace-container {
+            background-color: #e8dcc0;
+            padding: 15px;
+            overflow-y: auto;
+            border-right: 3px solid #8b4513;
+        }
+
+        .strace-container h2 {
+            font-size: 1.2em;
+            margin-bottom: 15px;
+            color: #2c1810;
+        }
+
+        .section-description {
+            background-color: #d4af37;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+	.section-description p {
+	    line-height: 1;
+	}
+
+        .section-description h2 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: #2c1810;
+        }
+
+        .line-description {
+            background-color: #daa520;
+            padding: 20px;
+            border-top: 3px solid #8b4513;
+        }
+
+        .line-description h2 {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: #2c1810;
+        }
+
+        .strace-section {
+            margin-bottom: 20px;
+            border-bottom: 2px solid #8b4513;
+            padding-bottom: 10px;
+        }
+
+        .strace-section.selected {
+            background-color: rgba(218, 165, 32, 0.3);
+            border-radius: 5px;
+            padding: 10px;
+            margin: -10px -5px 10px -5px;
+        }
+
+        .strace-line {
+            font-family: 'Courier New', 'Monaco', monospace;
+            padding: 2px 5px;
+            margin: 1px 0;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: background-color 0.2s;
+        }
+
+        .strace-line:hover {
+            background-color: #cd853f;
+        }
+
+        .strace-line.selected {
+            background-color: #b8860b;
+            font-weight: bold;
+        }
+
+        .strace-line a {
+            color: #8b4513;
+            text-decoration: none;
+        }
+
+        .strace-line a:hover {
+            text-decoration: underline;
+        }
+
+        .line-number {
+            color: #a0522d;
+            margin-right: 10px;
+        }
+
+        .syscall {
+            color: #8b0000;
+            font-weight: bold;
+        }
+
+        .args {
+            color: #2f4f4f;
+        }
+
+        .result {
+            color: #006400;
+        }
+
+        .description-content {
+            font-size: 2em;
+            line-height: 1.6;
+        }
+
+        .description-content p {
+            margin-bottom: 10px;
+        }
+
+        .description-content .highlight {
+            background-color: rgba(139, 69, 19, 0.1);
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', 'Monaco', monospace;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="program-source">
+            <h2>Program Source</h2>
+            <code>#!/usr/bin/env bash
+echo 'Hello World!'</code>
+        </div>
+
+        <div class="main-content">
+            <div class="strace-container">
+                <div id="strace-content">
+                    <!-- Strace content will be populated by JavaScript -->
+                </div>
+            </div>
+
+            <div class="section-description">
+                <div id="section-desc" class="description-content">
+                    <p>Click on a line in the strace to see its description. Use arrow keys to navigate between lines.</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="line-description">
+            <div id="line-desc" class="description-content">
+                <p>Click on a line in the strace to see its detailed description. Use arrow keys to navigate between lines.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Strace data with sections
+        const straceData = [
+            {
+                id: 'initial-exec',
+                title: 'Initial Script Execution',
+                description: 'The shell process is started and begins executing the script. This involves setting up the initial process environment, loading the dynamic linker, and preparing to find the bash interpreter.',
+                responsible: 'Shell startup and dynamic linking process',
+                lines: [
+                    { num: 1, call: 'execve', full: 'execve("/tmp/program.sh", ["/tmp/program.sh"], 0x7ffe96359a50 /* 60 vars */) = 0', desc: 'Execute the script file. The kernel loads the script and sees the shebang line.', args: 'Executes /tmp/program.sh with environment variables' },
+                    { num: 2, call: 'brk', full: 'brk(NULL) = 0x55bbdf413000', desc: 'Query the current program break (end of heap) for memory management.', args: 'NULL queries current break, returns heap start address' },
+                    { num: 3, call: 'mmap', full: 'mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f9f9e5b9000', desc: 'Allocate 8KB of anonymous memory for initial program use.', args: '8192 bytes, read/write permissions, private anonymous mapping' }
+                ]
+            },
+            {
+                id: 'dynamic-linking',
+                title: 'Dynamic Linker Setup',
+                description: 'The dynamic linker (ld.so) loads required shared libraries, particularly libc. This is necessary for any program that uses standard C library functions.',
+                responsible: 'Dynamic linker (/lib64/ld-linux-x86-64.so.2)',
+                lines: [
+                    { num: 4, call: 'access', full: 'access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)', desc: 'Check for library preload configuration file (not found).', args: 'Checks read permission on /etc/ld.so.preload' },
+                    { num: 5, call: 'openat', full: 'openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open the dynamic linker cache for fast library lookups.', args: 'Opens cache file read-only with close-on-exec flag' },
+                    { num: 6, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0644, st_size=105042, ...}) = 0', desc: 'Get file information for the ld.so.cache file.', args: 'File descriptor 3, returns file stats including size 105042 bytes' },
+                    { num: 7, call: 'mmap', full: 'mmap(NULL, 105042, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f9f9e59f000', desc: 'Memory-map the ld.so.cache file for efficient access.', args: 'Maps 105042 bytes read-only from file descriptor 3' },
+                    { num: 8, call: 'close', full: 'close(3) = 0', desc: 'Close the ld.so.cache file (now memory-mapped).', args: 'Closes file descriptor 3' },
+                    { num: 9, call: 'openat', full: 'openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open the main C library (libc) for loading.', args: 'Opens libc shared library read-only' }
+                ]
+            },
+            {
+                id: 'libc-loading',
+                title: 'Library Loading and Setup',
+                description: 'The C library (libc) is loaded into memory and mapped to appropriate memory regions. This includes the executable code, read-only data, and read-write data sections.',
+                responsible: 'Dynamic linker loading libc.so.6',
+                lines: [
+                    { num: 10, call: 'read', full: 'read(3, "\\177ELF\\2\\1\\1\\3\\0\\0\\0\\0\\0\\0\\0\\0\\3\\0>\\0\\1\\0\\0\\0000\\237\\2\\0\\0\\0\\0\\0"..., 832) = 832', desc: 'Read ELF header from libc to understand its structure.', args: 'Reads 832 bytes of ELF header from file descriptor 3' },
+                    { num: 11, call: 'pread64', full: 'pread64(3, "\\6\\0\\0\\0\\4\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0"..., 784, 64) = 784', desc: 'Read program header table from a specific offset in libc.', args: 'Reads 784 bytes at offset 64, gets program segments info' },
+                    { num: 12, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0755, st_size=2003408, ...}) = 0', desc: 'Get detailed file information for libc.', args: 'File descriptor 3, shows file size of ~2MB' },
+                    { num: 13, call: 'pread64', full: 'pread64(3, "\\6\\0\\0\\0\\4\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0"..., 784, 64) = 784', desc: 'Re-read program header table (verification or different data).', args: 'Second read of program headers for validation' },
+                    { num: 14, call: 'mmap', full: 'mmap(NULL, 2055640, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f9f9e3a9000', desc: 'Map the main libc file into memory as read-only.', args: 'Maps ~2MB read-only from start of libc file' },
+                    { num: 15, call: 'mmap', full: 'mmap(0x7f9f9e3d1000, 1462272, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x28000) = 0x7f9f9e3d1000', desc: 'Map the executable code section of libc with execute permissions.', args: 'Maps ~1.4MB executable code at fixed address' },
+                    { num: 16, call: 'mmap', full: 'mmap(0x7f9f9e536000, 352256, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x18d000) = 0x7f9f9e536000', desc: 'Map read-only data section of libc.', args: 'Maps ~344KB read-only data at fixed address' },
+                    { num: 17, call: 'mmap', full: 'mmap(0x7f9f9e58c000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1e2000) = 0x7f9f9e58c000', desc: 'Map read-write data section of libc for global variables.', args: 'Maps 24KB read-write data section' },
+                    { num: 18, call: 'mmap', full: 'mmap(0x7f9f9e592000, 52696, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7f9f9e592000', desc: 'Allocate additional anonymous memory for libc (BSS section).', args: 'Maps ~52KB anonymous memory for uninitialized data' },
+                    { num: 19, call: 'close', full: 'close(3) = 0', desc: 'Close the libc file (now fully loaded in memory).', args: 'Closes libc file descriptor 3' }
+                ]
+            },
+            {
+                id: 'process-init',
+                title: 'Process Initialization',
+                description: 'Complete the process setup including thread-local storage, security features, and memory protection. This prepares the runtime environment for program execution.',
+                responsible: 'C runtime initialization',
+                lines: [
+                    { num: 20, call: 'mmap', full: 'mmap(NULL, 12288, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f9f9e3a6000', desc: 'Allocate memory for thread-local storage and other runtime data.', args: 'Maps 12KB anonymous memory for TLS' },
+                    { num: 21, call: 'arch_prctl', full: 'arch_prctl(ARCH_SET_FS, 0x7f9f9e3a6740) = 0', desc: 'Set the FS register for thread-local storage access.', args: 'Sets FS segment register to TLS base address' },
+                    { num: 22, call: 'set_tid_address', full: 'set_tid_address(0x7f9f9e3a6a10) = 13179', desc: 'Set the address where the thread ID will be stored.', args: 'Sets clear_child_tid address, returns PID 13179' },
+                    { num: 23, call: 'set_robust_list', full: 'set_robust_list(0x7f9f9e3a6a20, 24) = 0', desc: 'Configure robust mutex list for thread synchronization.', args: 'Sets up robust futex list with 24-byte entries' },
+                    { num: 24, call: 'rseq', full: 'rseq(0x7f9f9e3a7060, 0x20, 0, 0x53053053) = 0', desc: 'Register restartable sequence for efficient user-space operations.', args: 'Registers 32-byte RSEQ structure for atomic operations' },
+                    { num: 25, call: 'mprotect', full: 'mprotect(0x7f9f9e58c000, 16384, PROT_READ) = 0', desc: 'Make libc data section read-only after initialization.', args: 'Protects 16KB libc data as read-only' },
+                    { num: 26, call: 'mprotect', full: 'mprotect(0x55bbbcafa000, 4096, PROT_READ) = 0', desc: 'Protect program data section as read-only.', args: 'Makes 4KB program data read-only' },
+                    { num: 27, call: 'mprotect', full: 'mprotect(0x7f9f9e5f4000, 8192, PROT_READ) = 0', desc: 'Protect dynamic linker data as read-only.', args: 'Makes 8KB linker data read-only' },
+                    { num: 28, call: 'prlimit64', full: 'prlimit64(0, RLIMIT_STACK, NULL, {rlim_cur=8192*1024, rlim_max=RLIM64_INFINITY}) = 0', desc: 'Query the current stack size limit (8MB current, unlimited max).', args: 'Queries stack limit for current process (PID 0)' },
+                    { num: 29, call: 'munmap', full: 'munmap(0x7f9f9e59f000, 105042) = 0', desc: 'Unmap the ld.so.cache file (no longer needed).', args: 'Unmaps 105042 bytes of ld cache' },
+                    { num: 30, call: 'getrandom', full: 'getrandom("\\x82\\x5d\\x0f\\xf0\\x47\\xa8\\xdb\\xcb", 8, GRND_NONBLOCK) = 8', desc: 'Generate random bytes for security features (ASLR, stack canaries).', args: 'Gets 8 random bytes non-blocking for security' },
+                    { num: 31, call: 'brk', full: 'brk(NULL) = 0x55bbdf413000', desc: 'Check current heap end again after initialization.', args: 'Queries current program break' },
+                    { num: 32, call: 'brk', full: 'brk(0x55bbdf434000) = 0x55bbdf434000', desc: 'Expand the heap by allocating more memory.', args: 'Extends heap by ~132KB for program use' }
+                ]
+            },
+            {
+                id: 'locale-setup',
+                title: 'Locale Configuration',
+                description: 'Load locale information for proper text formatting, character encoding, and internationalization support.',
+                responsible: 'C library locale initialization',
+                lines: [
+                    { num: 33, call: 'openat', full: 'openat(AT_FDCWD, "/usr/lib/locale/locale-archive", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open the system locale archive for internationalization.', args: 'Opens locale archive read-only' },
+                    { num: 34, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0644, st_size=3055776, ...}) = 0', desc: 'Get information about the locale archive file.', args: 'File descriptor 3, shows ~3MB locale data' },
+                    { num: 35, call: 'mmap', full: 'mmap(NULL, 3055776, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f9f9e000000', desc: 'Memory-map the entire locale archive for efficient access.', args: 'Maps entire 3MB locale archive read-only' },
+                    { num: 36, call: 'close', full: 'close(3) = 0', desc: 'Close the locale archive file (now memory-mapped).', args: 'Closes locale archive file descriptor' }
+                ]
+            },
+            {
+                id: 'bash-search',
+                title: 'Bash Interpreter Search',
+                description: 'The shell searches through the PATH environment variable to find the bash executable. This is triggered by the "#!/usr/bin/env bash" shebang line.',
+                responsible: 'Shell interpreter (env command from shebang)',
+                lines: [
+                    { num: 37, call: 'execve', full: 'execve("/home/administrator/.local/bin/bash", ["bash", "/tmp/program.sh"], 0x7fff69e25c18 /* 60 vars */) = -1 ENOENT (No such file or directory)', desc: 'Try to execute bash from user local bin directory (not found).', args: 'Attempts to run bash from ~/.local/bin' },
+                    { num: 38, call: 'execve', full: 'execve("/usr/local/sbin/bash", ["bash", "/tmp/program.sh"], 0x7fff69e25c18 /* 60 vars */) = -1 ENOENT (No such file or directory)', desc: 'Try to execute bash from local system sbin directory (not found).', args: 'Attempts to run bash from /usr/local/sbin' },
+                    { num: 39, call: 'execve', full: 'execve("/usr/sbin/bash", ["bash", "/tmp/program.sh"], 0x7fff69e25c18 /* 60 vars */) = -1 ENOENT (No such file or directory)', desc: 'Try to execute bash from system sbin directory (not found).', args: 'Attempts to run bash from /usr/sbin' },
+                    { num: 40, call: 'execve', full: 'execve("/sbin/bash", ["bash", "/tmp/program.sh"], 0x7fff69e25c18 /* 60 vars */) = -1 ENOENT (No such file or directory)', desc: 'Try to execute bash from root sbin directory (not found).', args: 'Attempts to run bash from /sbin' },
+                    { num: 41, call: 'execve', full: 'execve("/usr/local/bin/bash", ["bash", "/tmp/program.sh"], 0x7fff69e25c18 /* 60 vars */) = -1 ENOENT (No such file or directory)', desc: 'Try to execute bash from local bin directory (not found).', args: 'Attempts to run bash from /usr/local/bin' },
+                    { num: 42, call: 'execve', full: 'execve("/usr/bin/bash", ["bash", "/tmp/program.sh"], 0x7fff69e25c18 /* 60 vars */) = 0', desc: 'Successfully execute bash from standard system bin directory.', args: 'Successfully runs bash from /usr/bin' }
+                ]
+            },
+            {
+                id: 'bash-init',
+                title: 'Bash Shell Initialization',
+                description: 'The bash shell process initializes itself, loading required libraries and setting up its runtime environment.',
+                responsible: 'Bash shell (/usr/bin/bash)',
+                lines: [
+                    { num: 43, call: 'brk', full: 'brk(NULL) = 0x55b2b43ee000', desc: 'Bash queries its initial heap location.', args: 'New bash process queries program break' },
+                    { num: 44, call: 'mmap', full: 'mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f6f0a697000', desc: 'Allocate initial memory for bash operations.', args: 'Maps 8KB anonymous memory for bash' },
+                    { num: 45, call: 'access', full: 'access("/etc/ld.so.preload", R_OK) = -1 ENOENT (No such file or directory)', desc: 'Check for library preload configuration (bash dynamic linking).', args: 'Checks for ld preload config' },
+                    { num: 46, call: 'openat', full: 'openat(AT_FDCWD, "/etc/ld.so.cache", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open library cache for bash dependency loading.', args: 'Opens linker cache for bash libraries' },
+                    { num: 47, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0644, st_size=105042, ...}) = 0', desc: 'Get library cache file information.', args: 'Stats the ld.so.cache file' },
+                    { num: 48, call: 'mmap', full: 'mmap(NULL, 105042, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f6f0a67d000', desc: 'Memory-map the library cache for bash.', args: 'Maps ld cache for library lookups' },
+                    { num: 49, call: 'close', full: 'close(3) = 0', desc: 'Close the library cache file.', args: 'Closes ld cache file descriptor' }
+                ]
+            },
+            {
+                id: 'bash-libs',
+                title: 'Bash Library Loading',
+                description: 'Bash loads its required shared libraries including libtinfo (terminal handling) and libc (standard C library).',
+                responsible: 'Dynamic linker loading bash dependencies',
+                lines: [
+                    { num: 50, call: 'openat', full: 'openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libtinfo.so.6", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open the terminal info library for bash terminal handling.', args: 'Opens libtinfo for terminal capabilities' },
+                    { num: 51, call: 'read', full: 'read(3, "\\177ELF\\2\\1\\1\\0\\0\\0\\0\\0\\0\\0\\0\\0\\3\\0>\\0\\1\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0\\0"..., 832) = 832', desc: 'Read libtinfo ELF header.', args: 'Reads ELF header from libtinfo' },
+                    { num: 52, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0644, st_size=220464, ...}) = 0', desc: 'Get libtinfo file information.', args: 'Stats libtinfo library (~220KB)' },
+                    { num: 53, call: 'mmap', full: 'mmap(NULL, 219456, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f6f0a647000', desc: 'Map libtinfo into memory.', args: 'Maps ~214KB libtinfo read-only' },
+                    { num: 54, call: 'mmap', full: 'mmap(0x7f6f0a656000, 81920, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0xf000) = 0x7f6f0a656000', desc: 'Map libtinfo executable code section.', args: 'Maps 80KB executable code from libtinfo' },
+                    { num: 55, call: 'mmap', full: 'mmap(0x7f6f0a66a000, 57344, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x23000) = 0x7f6f0a66a000', desc: 'Map libtinfo read-only data section.', args: 'Maps 56KB read-only data from libtinfo' },
+                    { num: 56, call: 'mmap', full: 'mmap(0x7f6f0a678000, 20480, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x31000) = 0x7f6f0a678000', desc: 'Map libtinfo writable data section.', args: 'Maps 20KB read-write data from libtinfo' },
+                    { num: 57, call: 'close', full: 'close(3) = 0', desc: 'Close libtinfo file (now loaded).', args: 'Closes libtinfo file descriptor' },
+                    { num: 58, call: 'openat', full: 'openat(AT_FDCWD, "/lib/x86_64-linux-gnu/libc.so.6", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open libc for bash (same library as before, new process).', args: 'Opens libc for bash process' }
+                ]
+            },
+            {
+                id: 'bash-libc',
+                title: 'Bash C Library Setup',
+                description: 'Load and configure the C library for the bash process, similar to the initial process but for the new bash instance.',
+                responsible: 'Dynamic linker loading libc for bash',
+                lines: [
+                    { num: 59, call: 'read', full: 'read(3, "\\177ELF\\2\\1\\1\\3\\0\\0\\0\\0\\0\\0\\0\\0\\3\\0>\\0\\1\\0\\0\\0000\\237\\2\\0\\0\\0\\0\\0"..., 832) = 832', desc: 'Read libc ELF header for bash process.', args: 'Reads ELF header from libc' },
+                    { num: 60, call: 'pread64', full: 'pread64(3, "\\6\\0\\0\\0\\4\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0"..., 784, 64) = 784', desc: 'Read libc program headers for bash.', args: 'Reads program headers at offset 64' },
+                    { num: 61, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0755, st_size=2003408, ...}) = 0', desc: 'Get libc file stats for bash.', args: 'Stats libc file (~2MB)' },
+                    { num: 62, call: 'pread64', full: 'pread64(3, "\\6\\0\\0\\0\\4\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0@\\0\\0\\0\\0\\0\\0\\0"..., 784, 64) = 784', desc: 'Re-read program headers for verification.', args: 'Second read of program headers' },
+                    { num: 63, call: 'mmap', full: 'mmap(NULL, 2055640, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f6f0a451000', desc: 'Map main libc file for bash.', args: 'Maps ~2MB libc read-only' },
+                    { num: 64, call: 'mmap', full: 'mmap(0x7f6f0a479000, 1462272, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x28000) = 0x7f6f0a479000', desc: 'Map libc executable code for bash.', args: 'Maps ~1.4MB executable libc code' },
+                    { num: 65, call: 'mmap', full: 'mmap(0x7f6f0a5de000, 352256, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x18d000) = 0x7f6f0a5de000', desc: 'Map libc read-only data for bash.', args: 'Maps ~344KB read-only libc data' },
+                    { num: 66, call: 'mmap', full: 'mmap(0x7f6f0a634000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1e2000) = 0x7f6f0a634000', desc: 'Map libc writable data for bash.', args: 'Maps 24KB read-write libc data' },
+                    { num: 67, call: 'mmap', full: 'mmap(0x7f6f0a63a000, 52696, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7f6f0a63a000', desc: 'Allocate additional memory for libc BSS.', args: 'Maps ~52KB anonymous memory for BSS' },
+                    { num: 68, call: 'close', full: 'close(3) = 0', desc: 'Close libc file for bash.', args: 'Closes libc file descriptor' }
+                ]
+            },
+            {
+                id: 'bash-runtime-init',
+                title: 'Bash Runtime Initialization',
+                description: 'Complete bash runtime setup including thread-local storage, memory protection, and runtime environment configuration.',
+                responsible: 'Bash process initialization',
+                lines: [
+                    { num: 69, call: 'mmap', full: 'mmap(NULL, 12288, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f6f0a44e000', desc: 'Allocate TLS and runtime data for bash.', args: 'Maps 12KB for thread-local storage' },
+                    { num: 70, call: 'arch_prctl', full: 'arch_prctl(ARCH_SET_FS, 0x7f6f0a44e740) = 0', desc: 'Set FS register for bash TLS.', args: 'Sets FS segment for bash TLS' },
+                    { num: 71, call: 'set_tid_address', full: 'set_tid_address(0x7f6f0a44ea10) = 13179', desc: 'Set thread ID address for bash.', args: 'Sets clear_child_tid for bash, PID 13179' },
+                    { num: 72, call: 'set_robust_list', full: 'set_robust_list(0x7f6f0a44ea20, 24) = 0', desc: 'Configure robust mutex list for bash.', args: 'Sets up robust futex list for bash' },
+                    { num: 73, call: 'rseq', full: 'rseq(0x7f6f0a44f060, 0x20, 0, 0x53053053) = 0', desc: 'Register restartable sequences for bash.', args: 'Registers RSEQ for bash atomic operations' },
+                    { num: 74, call: 'mprotect', full: 'mprotect(0x7f6f0a634000, 16384, PROT_READ) = 0', desc: 'Protect libc data as read-only for bash.', args: 'Makes 16KB libc data read-only' },
+                    { num: 75, call: 'mprotect', full: 'mprotect(0x7f6f0a678000, 16384, PROT_READ) = 0', desc: 'Protect libtinfo data as read-only.', args: 'Makes 16KB libtinfo data read-only' },
+                    { num: 76, call: 'mprotect', full: 'mprotect(0x55b2b320a000, 16384, PROT_READ) = 0', desc: 'Protect bash program data as read-only.', args: 'Makes 16KB bash data read-only' },
+                    { num: 77, call: 'mprotect', full: 'mprotect(0x7f6f0a6d2000, 8192, PROT_READ) = 0', desc: 'Protect dynamic linker data for bash.', args: 'Makes 8KB linker data read-only' },
+                    { num: 78, call: 'prlimit64', full: 'prlimit64(0, RLIMIT_STACK, NULL, {rlim_cur=8192*1024, rlim_max=RLIM64_INFINITY}) = 0', desc: 'Query stack limit for bash process.', args: 'Gets stack limit (8MB current, unlimited max)' },
+                    { num: 79, call: 'munmap', full: 'munmap(0x7f6f0a67d000, 105042) = 0', desc: 'Unmap ld.so.cache for bash (no longer needed).', args: 'Unmaps ld cache from bash memory' }
+                ]
+            },
+            {
+                id: 'bash-terminal-setup',
+                title: 'Bash Terminal Setup',
+                description: 'Bash configures its terminal interface and prepares for interactive or script execution mode.',
+                responsible: 'Bash terminal interface initialization',
+                lines: [
+                    { num: 80, call: 'openat', full: 'openat(AT_FDCWD, "/dev/tty", O_RDWR|O_NONBLOCK) = 3', desc: 'Open the controlling terminal device.', args: 'Opens /dev/tty for terminal control' },
+                    { num: 81, call: 'close', full: 'close(3) = 0', desc: 'Close terminal (not needed for script execution).', args: 'Closes terminal device' },
+                    { num: 82, call: 'getrandom', full: 'getrandom("\\x21\\x22\\x02\\x81\\x35\\xaf\\x64\\x7b", 8, GRND_NONBLOCK) = 8', desc: 'Generate random bytes for bash security features.', args: 'Gets 8 random bytes for bash security' },
+                    { num: 83, call: 'brk', full: 'brk(NULL) = 0x55b2b43ee000', desc: 'Check bash heap location after initialization.', args: 'Queries bash program break' },
+                    { num: 84, call: 'brk', full: 'brk(0x55b2b440f000) = 0x55b2b440f000', desc: 'Expand bash heap for script processing.', args: 'Extends bash heap by ~132KB' }
+                ]
+            },
+            {
+                id: 'bash-locale',
+                title: 'Bash Locale Configuration',
+                description: 'Bash loads locale and character encoding information for proper text processing and internationalization.',
+                responsible: 'Bash locale and encoding setup',
+                lines: [
+                    { num: 85, call: 'openat', full: 'openat(AT_FDCWD, "/usr/lib/locale/locale-archive", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open locale archive for bash internationalization.', args: 'Opens locale archive for bash' },
+                    { num: 86, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0644, st_size=3055776, ...}) = 0', desc: 'Get locale archive file information for bash.', args: 'Stats locale archive (~3MB)' },
+                    { num: 87, call: 'mmap', full: 'mmap(NULL, 3055776, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f6f0a000000', desc: 'Memory-map locale archive for bash.', args: 'Maps 3MB locale archive for bash' },
+                    { num: 88, call: 'close', full: 'close(3) = 0', desc: 'Close locale archive file for bash.', args: 'Closes locale archive file' },
+                    { num: 89, call: 'openat', full: 'openat(AT_FDCWD, "/usr/lib/x86_64-linux-gnu/gconv/gconv-modules.cache", O_RDONLY|O_CLOEXEC) = 3', desc: 'Open character conversion modules cache.', args: 'Opens gconv cache for character encoding' },
+                    { num: 90, call: 'fstat', full: 'fstat(3, {st_mode=S_IFREG|0644, st_size=27028, ...}) = 0', desc: 'Get gconv cache file information.', args: 'Stats gconv cache (~27KB)' },
+                    { num: 91, call: 'mmap', full: 'mmap(NULL, 27028, PROT_READ, MAP_SHARED, 3, 0) = 0x7f6f0a690000', desc: 'Memory-map character conversion cache.', args: 'Maps 27KB gconv cache shared' },
+                    { num: 92, call: 'close', full: 'close(3) = 0', desc: 'Close gconv cache file.', args: 'Closes gconv cache file' },
+                    { num: 93, call: 'futex', full: 'futex(0x7f6f0a63972c, FUTEX_WAKE_PRIVATE, 2147483647) = 0', desc: 'Initialize threading synchronization primitives.', args: 'Wakes all waiters on futex (none waiting)' }
+                ]
+            },
+            {
+                id: 'bash-security',
+                title: 'Bash Security and Identity Setup',
+                description: 'Bash checks user and group identities for security purposes and configures signal handling for proper script execution.',
+                responsible: 'Bash security and signal initialization',
+                lines: [
+                    { num: 94, call: 'getuid', full: 'getuid() = 1000', desc: 'Get real user ID (UID 1000).', args: 'Returns real user ID 1000' },
+                    { num: 95, call: 'getgid', full: 'getgid() = 1000', desc: 'Get real group ID (GID 1000).', args: 'Returns real group ID 1000' },
+                    { num: 96, call: 'geteuid', full: 'geteuid() = 1000', desc: 'Get effective user ID (same as real UID).', args: 'Returns effective user ID 1000' },
+                    { num: 97, call: 'getegid', full: 'getegid() = 1000', desc: 'Get effective group ID (same as real GID).', args: 'Returns effective group ID 1000' },
+                    { num: 98, call: 'rt_sigprocmask', full: 'rt_sigprocmask(SIG_BLOCK, NULL, [], 8) = 0', desc: 'Query current signal mask (none blocked).', args: 'Gets current signal mask, none blocked' },
+                    { num: 99, call: 'rt_sigaction', full: 'rt_sigaction(SIGCHLD, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER|SA_RESTART, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=0}, 8) = 0', desc: 'Set SIGCHLD signal handler to default.', args: 'Sets SIGCHLD handler to default with restorer' },
+                    { num: 100, call: 'rt_sigaction', full: 'rt_sigaction(SIGCHLD, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER|SA_RESTART, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER|SA_RESTART, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Verify SIGCHLD signal handler configuration.', args: 'Confirms SIGCHLD handler setup' }
+                ]
+            },
+            {
+                id: 'bash-signal-config',
+                title: 'Bash Signal Handler Configuration',
+                description: 'Configure all the important signal handlers that bash needs for proper operation, including interrupt signals and job control.',
+                responsible: 'Bash signal handling setup',
+                lines: [
+                    { num: 101, call: 'rt_sigaction', full: 'rt_sigaction(SIGINT, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=0}, 8) = 0', desc: 'Set SIGINT (Ctrl+C) handler to default.', args: 'Sets SIGINT handler to default' },
+                    { num: 102, call: 'rt_sigaction', full: 'rt_sigaction(SIGINT, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Verify SIGINT handler configuration.', args: 'Confirms SIGINT handler setup' },
+                    { num: 103, call: 'rt_sigaction', full: 'rt_sigaction(SIGQUIT, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=0}, 8) = 0', desc: 'Set SIGQUIT (Ctrl+\\) handler to default.', args: 'Sets SIGQUIT handler to default' },
+                    { num: 104, call: 'rt_sigaction', full: 'rt_sigaction(SIGQUIT, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Verify SIGQUIT handler configuration.', args: 'Confirms SIGQUIT handler setup' },
+                    { num: 105, call: 'rt_sigaction', full: 'rt_sigaction(SIGTSTP, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=0}, 8) = 0', desc: 'Set SIGTSTP (Ctrl+Z) handler to default.', args: 'Sets SIGTSTP handler to default' },
+                    { num: 106, call: 'rt_sigaction', full: 'rt_sigaction(SIGTSTP, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Verify SIGTSTP handler configuration.', args: 'Confirms SIGTSTP handler setup' },
+                    { num: 107, call: 'rt_sigaction', full: 'rt_sigaction(SIGTTIN, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=0}, 8) = 0', desc: 'Set SIGTTIN (background read) handler to default.', args: 'Sets SIGTTIN handler to default' },
+                    { num: 108, call: 'rt_sigaction', full: 'rt_sigaction(SIGTTIN, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Verify SIGTTIN handler configuration.', args: 'Confirms SIGTTIN handler setup' },
+                    { num: 109, call: 'rt_sigaction', full: 'rt_sigaction(SIGTTOU, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=0}, 8) = 0', desc: 'Set SIGTTOU (background write) handler to default.', args: 'Sets SIGTTOU handler to default' },
+                    { num: 110, call: 'rt_sigaction', full: 'rt_sigaction(SIGTTOU, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Verify SIGTTOU handler configuration.', args: 'Confirms SIGTTOU handler setup' },
+                    { num: 111, call: 'rt_sigprocmask', full: 'rt_sigprocmask(SIG_BLOCK, NULL, [], 8) = 0', desc: 'Check signal mask after handler setup.', args: 'Queries signal mask, still none blocked' },
+                    { num: 112, call: 'rt_sigaction', full: 'rt_sigaction(SIGQUIT, {sa_handler=SIG_IGN, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Change SIGQUIT handler to ignore (script mode).', args: 'Sets SIGQUIT to ignore for script execution' }
+                ]
+            },
+            {
+                id: 'bash-env-setup',
+                title: 'Bash Environment Setup',
+                description: 'Bash examines its environment, determines working directory, and prepares for script execution by setting up process hierarchy.',
+                responsible: 'Bash environment and process setup',
+                lines: [
+                    { num: 113, call: 'uname', full: 'uname({sysname="Linux", nodename="loopback", ...}) = 0', desc: 'Get system information (Linux on loopback).', args: 'Gets system name, hostname, and version info' },
+                    { num: 114, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/home/administrator", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0', desc: 'Check home directory status.', args: 'Stats /home/administrator directory' },
+                    { num: 115, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, ".", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0', desc: 'Check current working directory.', args: 'Stats current directory (.)' },
+                    { num: 116, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/home", {st_mode=S_IFDIR|0755, st_size=4096, ...}, 0) = 0', desc: 'Check /home directory.', args: 'Stats /home directory' },
+                    { num: 117, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/home/administrator", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0', desc: 'Re-check home directory for path resolution.', args: 'Re-stats home directory' },
+                    { num: 118, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/home/administrator", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0', desc: 'Final home directory verification.', args: 'Final home directory check' },
+                    { num: 119, call: 'getpid', full: 'getpid() = 13179', desc: 'Get bash process ID (13179).', args: 'Returns bash PID 13179' },
+                    { num: 120, call: 'getppid', full: 'getppid() = 13176', desc: 'Get parent process ID (13176).', args: 'Returns parent PID 13176' },
+                    { num: 121, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, ".", {st_mode=S_IFDIR|0700, st_size=4096, ...}, 0) = 0', desc: 'Final working directory check.', args: 'Final check of current directory' }
+                ]
+            },
+            {
+                id: 'bash-verification',
+                title: 'Bash Executable Verification',
+                description: 'Bash verifies its own executable path and permissions to ensure it\'s running correctly and has proper access rights.',
+                responsible: 'Bash self-verification process',
+                lines: [
+                    { num: 122, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/home/administrator/.local/bin/bash", 0x7fff04676ab0, 0) = -1 ENOENT (No such file or directory)', desc: 'Check if bash exists in user local bin (not found).', args: 'Stats ~/.local/bin/bash (not found)' },
+                    { num: 123, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/usr/local/sbin/bash", 0x7fff04676ab0, 0) = -1 ENOENT (No such file or directory)', desc: 'Check if bash exists in local sbin (not found).', args: 'Stats /usr/local/sbin/bash (not found)' },
+                    { num: 124, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/usr/sbin/bash", 0x7fff04676ab0, 0) = -1 ENOENT (No such file or directory)', desc: 'Check if bash exists in system sbin (not found).', args: 'Stats /usr/sbin/bash (not found)' },
+                    { num: 125, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/sbin/bash", 0x7fff04676ab0, 0) = -1 ENOENT (No such file or directory)', desc: 'Check if bash exists in root sbin (not found).', args: 'Stats /sbin/bash (not found)' },
+                    { num: 126, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/usr/local/bin/bash", 0x7fff04676ab0, 0) = -1 ENOENT (No such file or directory)', desc: 'Check if bash exists in local bin (not found).', args: 'Stats /usr/local/bin/bash (not found)' },
+                    { num: 127, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/usr/bin/bash", {st_mode=S_IFREG|0755, st_size=1302512, ...}, 0) = 0', desc: 'Confirm bash exists in system bin directory.', args: 'Stats /usr/bin/bash (found, ~1.3MB)' },
+                    { num: 128, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/usr/bin/bash", {st_mode=S_IFREG|0755, st_size=1302512, ...}, 0) = 0', desc: 'Re-verify bash executable file.', args: 'Re-stats /usr/bin/bash for verification' }
+                ]
+            },
+            {
+                id: 'bash-permissions',
+                title: 'Bash Permission Verification',
+                description: 'Verify that the current user has the proper permissions to execute bash and access necessary files.',
+                responsible: 'Bash permission checking',
+                lines: [
+                    { num: 129, call: 'geteuid', full: 'geteuid() = 1000', desc: 'Re-check effective user ID for permission verification.', args: 'Gets effective UID 1000 for permission check' },
+                    { num: 130, call: 'getegid', full: 'getegid() = 1000', desc: 'Re-check effective group ID for permission verification.', args: 'Gets effective GID 1000 for permission check' },
+                    { num: 131, call: 'getuid', full: 'getuid() = 1000', desc: 'Re-check real user ID.', args: 'Gets real UID 1000' },
+                    { num: 132, call: 'getgid', full: 'getgid() = 1000', desc: 'Re-check real group ID.', args: 'Gets real GID 1000' },
+                    { num: 133, call: 'access', full: 'access("/usr/bin/bash", X_OK) = 0', desc: 'Verify execute permission on bash binary.', args: 'Checks execute permission on /usr/bin/bash' },
+                    { num: 134, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/usr/bin/bash", {st_mode=S_IFREG|0755, st_size=1302512, ...}, 0) = 0', desc: 'Final verification of bash executable.', args: 'Final stat of bash executable' },
+                    { num: 135, call: 'geteuid', full: 'geteuid() = 1000', desc: 'Final effective UID check.', args: 'Final effective UID verification' },
+                    { num: 136, call: 'getegid', full: 'getegid() = 1000', desc: 'Final effective GID check.', args: 'Final effective GID verification' },
+                    { num: 137, call: 'getuid', full: 'getuid() = 1000', desc: 'Final real UID check.', args: 'Final real UID verification' },
+                    { num: 138, call: 'getgid', full: 'getgid() = 1000', desc: 'Final real GID check.', args: 'Final real GID verification' },
+                    { num: 139, call: 'access', full: 'access("/usr/bin/bash", R_OK) = 0', desc: 'Verify read permission on bash binary.', args: 'Checks read permission on /usr/bin/bash' }
+                ]
+            },
+            {
+                id: 'bash-job-control',
+                title: 'Bash Job Control Setup',
+                description: 'Bash sets up job control and process group management, preparing for potential background jobs and signal handling.',
+                responsible: 'Bash job control initialization',
+                lines: [
+                    { num: 140, call: 'getpid', full: 'getpid() = 13179', desc: 'Get PID for job control setup.', args: 'Gets bash PID 13179 for job control' },
+                    { num: 141, call: 'getppid', full: 'getppid() = 13176', desc: 'Get parent PID for process hierarchy.', args: 'Gets parent PID 13176' },
+                    { num: 142, call: 'getpid', full: 'getpid() = 13179', desc: 'Re-verify PID for process group setup.', args: 'Re-gets PID for process group' },
+                    { num: 143, call: 'getppid', full: 'getppid() = 13176', desc: 'Re-verify parent PID.', args: 'Re-gets parent PID' },
+                    { num: 144, call: 'getpgrp', full: 'getpgrp() = 13176', desc: 'Get process group ID (same as parent).', args: 'Gets process group ID 13176' },
+                    { num: 145, call: 'ioctl', full: 'ioctl(2, TIOCGPGRP, 0x7fff04676d74) = -1 ENOTTY (Inappropriate ioctl for device)', desc: 'Try to get terminal process group (stderr not a terminal).', args: 'Attempts terminal ioctl on stderr (fails)' },
+                    { num: 146, call: 'rt_sigaction', full: 'rt_sigaction(SIGCHLD, {sa_handler=0x55b2b3139f10, sa_mask=[], sa_flags=SA_RESTORER|SA_RESTART, sa_restorer=0x7f6f0a490d20}, {sa_handler=SIG_DFL, sa_mask=[], sa_flags=SA_RESTORER|SA_RESTART, sa_restorer=0x7f6f0a490d20}, 8) = 0', desc: 'Set custom SIGCHLD handler for job control.', args: 'Sets custom SIGCHLD handler for bash jobs' },
+                    { num: 147, call: 'ioctl', full: 'ioctl(2, TIOCGPGRP, 0x7fff04676d54) = -1 ENOTTY (Inappropriate ioctl for device)', desc: 'Second attempt at terminal process group check.', args: 'Second terminal ioctl attempt (fails)' },
+                    { num: 148, call: 'prlimit64', full: 'prlimit64(0, RLIMIT_NPROC, NULL, {rlim_cur=61697, rlim_max=61697}) = 0', desc: 'Check process limit (max 61697 processes).', args: 'Gets process limit (61697 max processes)' },
+                    { num: 149, call: 'rt_sigprocmask', full: 'rt_sigprocmask(SIG_BLOCK, NULL, [], 8) = 0', desc: 'Final signal mask check before script execution.', args: 'Final signal mask query' }
+                ]
+            },
+            {
+                id: 'script-reading',
+                title: 'Script File Reading',
+                description: 'Bash opens and reads the actual script file to begin parsing and executing the commands within it.',
+                responsible: 'Bash script file processing',
+                lines: [
+                    { num: 150, call: 'openat', full: 'openat(AT_FDCWD, "/tmp/program.sh", O_RDONLY) = 3', desc: 'Open the script file for reading.', args: 'Opens /tmp/program.sh read-only' },
+                    { num: 151, call: 'newfstatat', full: 'newfstatat(AT_FDCWD, "/tmp/program.sh", {st_mode=S_IFREG|0775, st_size=41, ...}, 0) = 0', desc: 'Get script file information (41 bytes, executable).', args: 'Stats script file (41 bytes, mode 775)' },
+                    { num: 152, call: 'ioctl', full: 'ioctl(3, TCGETS, 0x7fff04676e30) = -1 ENOTTY (Inappropriate ioctl for device)', desc: 'Check if script file is a terminal (it\'s not).', args: 'Tests if file descriptor 3 is terminal (no)' },
+                    { num: 153, call: 'lseek', full: 'lseek(3, 0, SEEK_CUR) = 0', desc: 'Get current file position (start of file).', args: 'Gets current position in file (0)' },
+                    { num: 154, call: 'read', full: 'read(3, "#!/usr/bin/env bash\\necho \'Hello "..., 80) = 41', desc: 'Read the script content (41 bytes total).', args: 'Reads up to 80 bytes, gets 41 bytes of script' },
+                    { num: 155, call: 'lseek', full: 'lseek(3, 0, SEEK_SET) = 0', desc: 'Reset file position to beginning.', args: 'Seeks to start of file (position 0)' }
+                ]
+            },
+            {
+                id: 'script-preparation',
+                title: 'Script Execution Preparation',
+                description: 'Bash prepares for script execution by setting up file descriptors and configuring the execution environment.',
+                responsible: 'Bash script execution setup',
+                lines: [
+                    { num: 156, call: 'prlimit64', full: 'prlimit64(0, RLIMIT_NOFILE, NULL, {rlim_cur=1024, rlim_max=512*1024}) = 0', desc: 'Check file descriptor limit (1024 current, 512K max).', args: 'Gets file descriptor limits (1024/512K)' },
+                    { num: 157, call: 'fcntl', full: 'fcntl(255, F_GETFD) = -1 EBADF (Bad file descriptor)', desc: 'Check if FD 255 exists (bash internal descriptor).', args: 'Tests file descriptor 255 (not open)' },
+                    { num: 158, call: 'dup2', full: 'dup2(3, 255) = 255', desc: 'Duplicate script file to bash internal FD 255.', args: 'Duplicates FD 3 to FD 255 for bash' },
+                    { num: 159, call: 'close', full: 'close(3) = 0', desc: 'Close original script file descriptor.', args: 'Closes original script FD 3' },
+                    { num: 160, call: 'fcntl', full: 'fcntl(255, F_SETFD, FD_CLOEXEC) = 0', desc: 'Set close-on-exec flag for internal descriptor.', args: 'Sets FD_CLOEXEC on FD 255' },
+                    { num: 161, call: 'fcntl', full: 'fcntl(255, F_GETFL) = 0x8000 (flags O_RDONLY|O_LARGEFILE)', desc: 'Get file status flags for script descriptor.', args: 'Gets flags: read-only, large file support' },
+                    { num: 162, call: 'fstat', full: 'fstat(255, {st_mode=S_IFREG|0775, st_size=41, ...}) = 0', desc: 'Get file stats for internal script descriptor.', args: 'Stats FD 255 (41 bytes, mode 775)' },
+                    { num: 163, call: 'lseek', full: 'lseek(255, 0, SEEK_CUR) = 0', desc: 'Check current position in script file.', args: 'Gets current position in FD 255 (0)' },
+                    { num: 164, call: 'read', full: 'read(255, "#!/usr/bin/env bash\\necho \'Hello "..., 41) = 41', desc: 'Read the complete script content for execution.', args: 'Reads all 41 bytes of script content' }
+                ]
+            },
+            {
+                id: 'command-execution',
+                title: 'Command Execution',
+                description: 'Bash executes the echo command from the script, writing "Hello World!" to standard output.',
+                responsible: 'Echo command from hello_world.sh script',
+                lines: [
+                    { num: 165, call: 'fstat', full: 'fstat(1, {st_mode=S_IFREG|0664, st_size=13000, ...}) = 0', desc: 'Check stdout file descriptor (redirected to file).', args: 'Stats stdout FD 1 (file, 13000 bytes existing)' },
+                    { num: 166, call: 'write', full: 'write(1, "Hello World!\\n", 13Hello World!\n) = 13', desc: 'Write "Hello World!" to stdout (the actual program output).', args: 'Writes 13 bytes "Hello World!\\n" to stdout' },
+                    { num: 167, call: '', full: '', desc: 'The actual output "Hello World!" appears here in the trace.', args: 'This line shows the visible program output' }
+                ]
+            },
+            {
+                id: 'script-completion',
+                title: 'Script Completion and Exit',
+                description: 'Bash completes script execution, performs cleanup, and exits normally with status 0.',
+                responsible: 'Bash cleanup and exit process',
+                lines: [
+                    { num: 168, call: 'read', full: 'read(255, "", 41) = 0', desc: 'Attempt to read more from script (EOF reached).', args: 'Reads from script FD 255, gets EOF (0 bytes)' },
+                    { num: 169, call: 'rt_sigprocmask', full: 'rt_sigprocmask(SIG_BLOCK, [CHLD], [], 8) = 0', desc: 'Block SIGCHLD during cleanup.', args: 'Blocks SIGCHLD signal during exit' },
+                    { num: 170, call: 'rt_sigprocmask', full: 'rt_sigprocmask(SIG_SETMASK, [], NULL, 8) = 0', desc: 'Restore original signal mask.', args: 'Restores signal mask (unblocks all)' },
+                    { num: 171, call: 'exit_group', full: 'exit_group(0) = ?', desc: 'Exit the entire process group with status 0 (success).', args: 'Exits process group with status 0' },
+                    { num: 172, call: '', full: '+++ exited with 0 +++', desc: 'Strace notation showing successful program termination.', args: 'Process terminated successfully with exit code 0' }
+                ]
+            }
+        ];
+
+        let currentSection = null;
+        let currentLine = null;
+        let allLines = [];
+
+        function createSyscallLink(syscall) {
+            const manPages = {
+                'execve': 'https://man7.org/linux/man-pages/man2/execve.2.html',
+                'brk': 'https://man7.org/linux/man-pages/man2/brk.2.html',
+                'mmap': 'https://man7.org/linux/man-pages/man2/mmap.2.html',
+                'access': 'https://man7.org/linux/man-pages/man2/access.2.html',
+                'openat': 'https://man7.org/linux/man-pages/man2/openat.2.html',
+                'fstat': 'https://man7.org/linux/man-pages/man2/fstat.2.html',
+                'close': 'https://man7.org/linux/man-pages/man2/close.2.html',
+                'read': 'https://man7.org/linux/man-pages/man2/read.2.html',
+                'pread64': 'https://man7.org/linux/man-pages/man2/pread.2.html',
+                'write': 'https://man7.org/linux/man-pages/man2/write.2.html',
+                'arch_prctl': 'https://man7.org/linux/man-pages/man2/arch_prctl.2.html',
+                'set_tid_address': 'https://man7.org/linux/man-pages/man2/set_tid_address.2.html',
+                'set_robust_list': 'https://man7.org/linux/man-pages/man2/set_robust_list.2.html',
+                'rseq': 'https://man7.org/linux/man-pages/man2/rseq.2.html',
+                'mprotect': 'https://man7.org/linux/man-pages/man2/mprotect.2.html',
+                'prlimit64': 'https://man7.org/linux/man-pages/man2/prlimit.2.html',
+                'munmap': 'https://man7.org/linux/man-pages/man2/munmap.2.html',
+                'getrandom': 'https://man7.org/linux/man-pages/man2/getrandom.2.html',
+                'futex': 'https://man7.org/linux/man-pages/man2/futex.2.html',
+                'getuid': 'https://man7.org/linux/man-pages/man2/getuid.2.html',
+                'getgid': 'https://man7.org/linux/man-pages/man2/getgid.2.html',
+                'geteuid': 'https://man7.org/linux/man-pages/man2/geteuid.2.html',
+                'getegid': 'https://man7.org/linux/man-pages/man2/getegid.2.html',
+                'rt_sigprocmask': 'https://man7.org/linux/man-pages/man2/sigprocmask.2.html',
+                'rt_sigaction': 'https://man7.org/linux/man-pages/man2/sigaction.2.html',
+                'uname': 'https://man7.org/linux/man-pages/man2/uname.2.html',
+                'newfstatat': 'https://man7.org/linux/man-pages/man2/newfstatat.2.html',
+                'getpid': 'https://man7.org/linux/man-pages/man2/getpid.2.html',
+                'getppid': 'https://man7.org/linux/man-pages/man2/getppid.2.html',
+                'getpgrp': 'https://man7.org/linux/man-pages/man2/getpgrp.2.html',
+                'ioctl': 'https://man7.org/linux/man-pages/man2/ioctl.2.html',
+                'fcntl': 'https://man7.org/linux/man-pages/man2/fcntl.2.html',
+                'dup2': 'https://man7.org/linux/man-pages/man2/dup2.2.html',
+                'lseek': 'https://man7.org/linux/man-pages/man2/lseek.2.html',
+                'exit_group': 'https://man7.org/linux/man-pages/man2/exit_group.2.html'
+            };
+            
+            return manPages[syscall] || `https://man7.org/linux/man-pages/man2/${syscall}.2.html`;
+        }
+
+        function formatStraceLine(line) {
+            if (!line.call) return line.full;
+            
+            const parts = line.full.split('(');
+            if (parts.length < 2) return line.full;
+            
+            const syscall = line.call;
+            const rest = line.full.substring(syscall.length);
+            
+            return `<a href="${createSyscallLink(syscall)}" target="_blank" class="syscall">${syscall}</a>${rest}`;
+        }
+
+        function renderStrace() {
+            const straceContent = document.getElementById('strace-content');
+            straceContent.innerHTML = '';
+
+            straceData.forEach(section => {
+                const sectionDiv = document.createElement('div');
+                sectionDiv.className = 'strace-section';
+                sectionDiv.id = section.id;
+
+                section.lines.forEach(line => {
+                    const lineDiv = document.createElement('div');
+                    lineDiv.className = 'strace-line';
+                    lineDiv.dataset.section = section.id;
+                    lineDiv.dataset.lineNum = line.num;
+                    
+                    const lineNumber = line.num.toString().padStart(3, ' ');
+                    lineDiv.innerHTML = `<span class="line-number">${lineNumber}→</span>${formatStraceLine(line)}`;
+
+                    lineDiv.addEventListener('click', () => {
+                        selectLine(section.id, line.num);
+                    });
+
+                    // Store line info for keyboard navigation
+                    allLines.push({
+                        sectionId: section.id,
+                        lineNum: line.num,
+                        element: lineDiv
+                    });
+
+                    sectionDiv.appendChild(lineDiv);
+                });
+
+                straceContent.appendChild(sectionDiv);
+            });
+        }
+
+        function selectSection(sectionId) {
+            // Remove previous section selection
+            if (currentSection) {
+                document.getElementById(currentSection).classList.remove('selected');
+            }
+
+            currentSection = sectionId;
+            const section = straceData.find(s => s.id === sectionId);
+            
+            if (section) {
+                document.getElementById(sectionId).classList.add('selected');
+                
+                const sectionDesc = document.getElementById('section-desc');
+                sectionDesc.innerHTML = `
+                    <p><strong>${section.title}</strong></p>
+                    <p>${section.description}</p>
+                    <p><em>Responsible component:</em> <span class="highlight">${section.responsible}</span></p>
+                `;
+            }
+        }
+
+        function selectLine(sectionId, lineNum) {
+            // Remove previous line selection
+            if (currentLine) {
+                const prevLine = document.querySelector(`[data-line-num="${currentLine}"]`);
+                if (prevLine) {
+                    prevLine.classList.remove('selected');
+                }
+            }
+
+            // Select new section if different
+            if (currentSection !== sectionId) {
+                selectSection(sectionId);
+            }
+
+            currentLine = lineNum;
+            const lineElement = document.querySelector(`[data-line-num="${lineNum}"]`);
+            if (lineElement) {
+                lineElement.classList.add('selected');
+            }
+
+            // Update line description
+            const section = straceData.find(s => s.id === sectionId);
+            const line = section ? section.lines.find(l => l.num === lineNum) : null;
+            
+            if (line) {
+                const lineDesc = document.getElementById('line-desc');
+                lineDesc.innerHTML = `
+                    <p><strong>Line ${line.num}:</strong> <span class="highlight">${line.call || 'Output'}</span></p>
+                    <p>${line.desc}</p>
+                    <p><em>Arguments/Details:</em> ${line.args}</p>
+                `;
+            }
+        }
+
+        function handleKeyNavigation(event) {
+            if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+                event.preventDefault();
+                
+                if (allLines.length === 0) return;
+                
+                let currentIndex = -1;
+                if (currentLine) {
+                    currentIndex = allLines.findIndex(line => line.lineNum === currentLine);
+                }
+                
+                let newIndex;
+                if (event.key === 'ArrowUp') {
+                    newIndex = currentIndex > 0 ? currentIndex - 1 : allLines.length - 1;
+                } else {
+                    newIndex = currentIndex < allLines.length - 1 ? currentIndex + 1 : 0;
+                }
+                
+                const newLine = allLines[newIndex];
+                selectLine(newLine.sectionId, newLine.lineNum);
+                
+                // Scroll the selected line into view
+                newLine.element.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'center'
+                });
+            }
+        }
+
+        // Initialize the page
+        document.addEventListener('DOMContentLoaded', () => {
+            renderStrace();
+            
+            // Select the first line on page load
+            if (straceData.length > 0 && straceData[0].lines.length > 0) {
+                const firstSection = straceData[0];
+                const firstLine = firstSection.lines[0];
+                selectLine(firstSection.id, firstLine.num);
+            }
+            
+            // Add keyboard event listener
+            document.addEventListener('keydown', handleKeyNavigation);
+        });
+    </script>
+</body>
+</html>
